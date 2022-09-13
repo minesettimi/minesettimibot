@@ -4,9 +4,19 @@ import fs from 'fs';
 import path from 'path';
 dotenv.config();
 
-//************************************************************************************** */
-// Regular bot code should not be here!
-//************************************************************************************** */
+//----------------------------------------------------
+// Events and Interactions should not be here.
+//
+
+export type serverInfo = {
+    servers: [{
+        name: string,
+        playercount: number,
+        players: string[]
+    }]
+}
+
+export let serverData : serverInfo;
 
 declare module "discord.js" {
     export interface Client {

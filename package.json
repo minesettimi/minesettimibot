@@ -14,6 +14,10 @@
     "discord.js": "^14.3.0",
     "dotenv": "^16.0.2",
     "fs": "^0.0.1-security",
+    "gamedig": "^4.0.5",
     "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "@types/gamedig": "^3.0.2"
   }
 }
