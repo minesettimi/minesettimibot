@@ -7,6 +7,7 @@ export = {
 
         const command = interaction.client.commands.get(interaction.commandName);
 
+
         if (!command) return;
 
         try {

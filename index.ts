@@ -8,16 +8,6 @@ dotenv.config();
 // Events and Interactions should not be here.
 //
 
-export type serverInfo = {
-    servers: [{
-        name: string,
-        playercount: number,
-        players: string[]
-    }]
-}
-
-export let serverData : serverInfo;
-
 declare module "discord.js" {
     export interface Client {
         commands: Collection<unknown, any>
@@ -27,6 +17,8 @@ declare module "discord.js" {
 const client = new DiscordJS.Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -51,7 +43,7 @@ const eventFiles = fs.readdirSync(eventsPath).filter((file: string) => file.ends
 for (const file of eventFiles) {
     const filePath = path.join(eventsPath, file);
     const event = require(filePath);
-    if (event.once) 
+    if (event.once)
         client.once(event.name, (...args) => event.execute(...args));
     else
         client.on(event.name, (...args) => event.execute(...args));

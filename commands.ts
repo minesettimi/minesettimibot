@@ -8,7 +8,7 @@ const commands : any[] = []
 const commandsPath = path.join(__dirname, 'commands');
 const commandFiles = fs.readdirSync(commandsPath).filter((file : string) => file.endsWith('.ts'));
 
-for (const file of commandFiles) 
+for (const file of commandFiles)
 {
     const filePath = path.join(commandsPath, file);
     const command = require(filePath);
@@ -17,6 +17,16 @@ for (const file of commandFiles)
 
 const rest = new REST({ version: '10'}).setToken(process.env.TOKEN as string);
 
-rest.put(Routes.applicationGuildCommands(process.env.APP_ID as string, process.env.GUILD_ID as string), { body: commands})
-    .then((data : any) => console.log(`Successfully registered ${data.length} application commands.`))
-    .catch(console.error);
+(async () => {
+    try {
+        console.log('Refreshing commands.');
+
+        await rest.put(Routes.applicationCommands(process.env.APP_ID as string), {body: commands});
+
+        console.log('Successfully reloaded commands.');
+    }
+    catch (error)
+    {
+        console.error(error);
+    }
+})();
