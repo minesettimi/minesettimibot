@@ -1,5 +1,5 @@
 import { VoiceConnectionStatus, entersState, joinVoiceChannel, VoiceConnection, getVoiceConnection, createAudioPlayer, AudioPlayer, AudioPlayerStatus, createAudioResource, StreamType} from '@discordjs/voice';
-import { Channel, ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, SlashCommandBuilder, TextBasedChannel, User } from "discord.js";
+import { ChatInputCommandInteraction, EmbedBuilder, Guild, GuildMember, Message, PermissionFlagsBits, SlashCommandBuilder, TextBasedChannel } from "discord.js";
 import ytdl from "ytdl-core";
 import ytdld from "ytdl-core-discord"
 import yts from "yt-search"
@@ -12,6 +12,7 @@ const defaultQueue: queue =
     ownerName: "",
     vc: "",
     queue: [],
+    skipVotes: [],
 }
 
 const initialEmbed = new EmbedBuilder()
@@ -37,21 +38,25 @@ export = {
         .addSubcommand(subcommand =>
             subcommand.setName('stop').setDescription("Stops the music bot and removes it from vc.")
         )
-        .addSubcommand(subcommand => subcommand.setName("skip").setDescription("Skips the current song playing on the bot.")),
-    async execute(interaction : ChatInputCommandInteraction) {
+        .addSubcommand(subcommand => subcommand.setName("skip").setDescription("Skips the current song playing on the bot."))
+        .addSubcommand(subcommand => subcommand.setName("queue").setDescription("Sends a list of the first 5 songs current music queue."))
+        .addSubcommand(subcommand => subcommand.setName("forcedj").setDescription("Force gives yourself control of the active bot.")),
+    async execute(interaction : ChatInputCommandInteraction) 
+    {
+        await interaction.deferReply({ephemeral: true});
 
         const member = interaction.member as GuildMember;
-        if (member == null) return;
+        if (member == null) return await interaction.editReply("Failed to get member.");
 
         const vc = member.voice.channel;
-        if (vc == null) return await interaction.reply({content: "You must be in a vc to play music!", ephemeral: true});
+        if (vc == null) return await interaction.editReply("You need to be in a voice channel to use this!");
         const vcChannel = vc.id;
 
-        if (interaction.guild == null) return;
+        if (interaction.guild == null) return await interaction.editReply("Failed to get discord server.");
 		const guild = interaction.guild;
 
         const channel = interaction.channel;
-        if (!channel) return;
+        if (!channel) return await interaction.editReply("Failed to get text channel.");
 
         let serverQueue: queue = queueList.get(guild.id) ?? Object.assign({}, defaultQueue);
 
@@ -72,7 +77,7 @@ export = {
                     if (search.videos.length > 0)
                         video = search.videos[0].url;
                     else
-                        return interaction.reply({content: "Couldn't find a video with that url or name!", ephemeral: true});
+                        return await interaction.editReply("Couldn't find a video with that url or name!");
                 }
 
                 const info = await ytdl.getBasicInfo(video);
@@ -94,7 +99,10 @@ export = {
                     requesterIcon: member.user.avatarURL(),
                 });
 
-                if (serverQueue.owner === "")
+                // This should not be needed but somehow it is
+                defaultQueue.queue = [];
+
+                if (!connection)
                 {
                     message = await interaction.channel.send({embeds: [initialEmbed]});
 
@@ -106,7 +114,7 @@ export = {
                     createConnection();
                     playMusic();
 
-                    await interaction.reply({content: `Started playing \`${title}\` by \`${author.name}\`.`, ephemeral: true});
+                    await interaction.editReply(`Started playing \`${title}\` by \`${author.name}\`.`);
                 }
                 else
                 {
@@ -114,7 +122,7 @@ export = {
                     playingEmbed.addFields({name: 'Queue Remaining:', value: `${serverQueue.queue.length}`, inline: true});
                     serverQueue.msg?.edit({embeds: [playingEmbed]});
 
-                	await interaction.reply({content: `Added \`${title}\` by \`${author.name}\` to the queue at position **${position}**.`, ephemeral: false});
+                	await interaction.editReply(`Added \`${title}\` by \`${author.name}\` to the queue at position **${position}**.`);
             	}
 
                 queueList.set(guild.id, serverQueue);
@@ -124,33 +132,89 @@ export = {
 
             case "stop":
             {
-                if (!connection)
-                	return interaction.reply({content: "There is no active music bot in this server!", ephemeral: true});
+                if (!connection) return await interaction.editReply("There is no active music bot in this server!");
 
                 if (serverQueue.owner != member.id)
-                	return interaction.reply({content: "You are not the current owner of the bot!", ephemeral: true});
+                	return await interaction.editReply("You are not the current owner of the bot!");
 
-                stop();
+                await interaction.editReply("Stopped the music player.");
 
-                await interaction.reply({content: "Stopped the music player.", ephemeral: true});
+                await stop();
 
                 break;
             }
 
             case "skip":
             {
-                if (!connection)
-                return interaction.reply({content: "There is no active music bot in this server!", ephemeral: true});
+                if (!connection) return await interaction.editReply("There is no active music bot in this server!");
+
+                if (vcChannel != serverQueue.vc) interaction.editReply("You aren't in the same vc as the music bot!");
 
                 if (serverQueue.owner != member.id)
-                    return interaction.reply({content: "You are not the current owner of the bot!", ephemeral: true});
+                {
+                    if (serverQueue.skipVotes.includes(member.id))
+                    	return await interaction.editReply("You already voted!");
+
+                    serverQueue.skipVotes.push(member.id);
+					
+                    const votesNeeded = Math.floor(vc.members.size * .75);
+                    const votes = serverQueue.skipVotes.length;
+
+                    await interaction.editReply("Voted to skip.");
+
+                    if (votes < votesNeeded)
+                    {
+                        serverQueue.text?.send(`${member.user.username} voted to skip the song. (${votes}/${votesNeeded})`);
+                        return;
+                    }
+                    else
+                    	serverQueue.text?.send(`${member.user.username} vote to skip the song. Vote passed.`);
+                }
+                else
+                    await interaction.editReply("Skipped current song.");
 
                 audioPlayer?.stop();
                 playMusic();
 
-                await interaction.reply({content: "Skipped current song.", ephemeral: true});
-
                 return;
+            }
+
+            case "queue":
+            {
+                if (!connection) return await interaction.editReply("There is no active music bot in this server!");
+
+                const queueLength = serverQueue.queue.length;
+
+                if (queueLength < 1) return await interaction.editReply("There is nothing in the queue.");
+                
+                let queueMsg = new EmbedBuilder()
+                    .setTitle("Music Queue")
+                    .setDescription(`Currently ${queueLength} in queue.`)
+
+                const listSize = Math.min(5, queueLength);
+
+                for (let i = 0; i < listSize; i++)
+                {
+                    const queueItem: queueEntry = serverQueue.queue[i];
+
+                    queueMsg.addFields({name: `#${i+1}: ${queueItem.name} by ${queueItem.author}`, value: `**Requested by:** ${queueItem.requester} **Length:** ${queueItem.length}`});
+                }
+
+                interaction.editReply({embeds: [queueMsg]});
+            }
+
+            case "forcedj":
+            {
+                if (!connection) return await interaction.editReply("There is no active music bot in this server!");
+
+                if (!member.permissions.has([PermissionFlagsBits.BanMembers])) return await interaction.editReply("You don't have permission to use this command!");
+
+                serverQueue.owner = member.id;
+                serverQueue.ownerName = member.user.tag;
+                
+				queueList.set(guild.id, serverQueue);
+
+                interaction.editReply("You are now the DJ of the bot.");
             }
         }
 
@@ -199,9 +263,16 @@ export = {
 
             if (serverQueue.queue.length < 1)
             {
-                stop();
+                setTimeout(() => {
+                    if (serverQueue.queue.length < 1)
+                    {
+                        stop();
+                    }
+                }, 10000)
                 return;
             }
+
+            serverQueue.skipVotes = [];
 
             const music: queueEntry = serverQueue.queue.shift() as queueEntry;
 
@@ -238,15 +309,22 @@ export = {
             serverQueue.msg?.edit({embeds: [playingEmbed]});
         }
 
-        function stop()
+        async function stop()
         {
             if (connection) connection.destroy();
-            if (audioPlayer) audioPlayer.stop()
+            if (audioPlayer) audioPlayer.stop();
+
+            const embedMessage = serverQueue.msg;
+            
+            await embedMessage?.edit({embeds: [endedEmbed]});
+            serverQueue = Object.assign({}, defaultQueue);
+            serverQueue.queue = [];
 
             queueList.delete(guild.id);
 
-            serverQueue.msg?.edit({embeds: [endedEmbed]})
-            serverQueue = Object.assign({}, defaultQueue);
+            setTimeout(async () => {
+                embedMessage?.delete();
+            }, 5000);
 
             return;
         }
@@ -260,7 +338,8 @@ interface queue {
     vc: string,
     text?: TextBasedChannel,
     msg?: Message<boolean>,
-    queue: queueEntry[]
+    queue: queueEntry[],
+    skipVotes: string[],
 }
 
 interface queueEntry {
