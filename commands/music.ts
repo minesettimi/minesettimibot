@@ -3,6 +3,7 @@ import { ChatInputCommandInteraction, EmbedBuilder, Guild, GuildMember, Message,
 import ytdl from "ytdl-core";
 import ytdld from "ytdl-core-discord"
 import yts from "yt-search"
+import ytpl from 'ytpl';
 
 const queueList = new Map<string, queue>;
 
@@ -69,8 +70,30 @@ export = {
             case "play":
             {
                 let video = interaction.options.getString("video", true);
+                let videos: string[] = [];
 
-                if (!ytdl.validateURL(video))
+                const playlistID = video.match(/&list=(.*?)(?=&index|$)/);
+
+                if (playlistID && ytpl.validateID(playlistID[1]))
+                {
+                    let playlist: ytpl.Result | null = null;
+
+                    try 
+                    {
+                        playlist = await ytpl(playlistID[1]);
+                    }
+                    catch(err)
+                    {
+                        // do nothing as next if statement will handle it
+                    }
+
+                    //keep it here so that it will satisfy typescript
+                    if (!playlist) return await interaction.editReply("Invalid playlist!"); 
+
+                    for (const playlistItem of playlist.items)
+                        videos.push(playlistItem.url);
+                }
+                else if (!ytdl.validateURL(video))
                 {
                     const search = await yts(video);
 
@@ -80,24 +103,44 @@ export = {
                         return await interaction.editReply("Couldn't find a video with that url or name!");
                 }
 
-                const info = await ytdl.getBasicInfo(video);
+                videos.push(video);
+
+                async function addToQueue(video: string)
+                {
+                    const info = await ytdl.getBasicInfo(video);
+                    const title = info.videoDetails.title;
+                    const author = info.videoDetails.author;
+                    const url = info.videoDetails.video_url;
+
+                    const seconds = parseInt(info.videoDetails.lengthSeconds);
+                    const time = new Date(seconds * 1000).toISOString().substring(14, 19);
+
+                    const position = serverQueue.queue.push({
+                        url: url,
+                        name: title,
+                        author: author.name,
+                        authorUrl: author.channel_url,
+                        length: time,
+                        img: info.videoDetails.thumbnails[1].url,
+                        requester: member.user.tag,
+                        requesterIcon: member.user.avatarURL(),
+                    });
+                    
+                    return position;
+                }
+                
+                let position = 0;
+                for (let i = 0; i < videos.length; i++)
+                {
+                    const tempPos = await addToQueue(videos[i]);
+                    if (i == 0)
+                        position = tempPos;
+                }
+                
+                //get info on first song
+                const info = await ytdl.getBasicInfo(videos[0]);
                 const title = info.videoDetails.title;
                 const author = info.videoDetails.author;
-                const url = info.videoDetails.video_url;
-
-                const seconds = parseInt(info.videoDetails.lengthSeconds);
-                const time = new Date(seconds * 1000).toISOString().substring(14, 19);
-
-                const position = serverQueue.queue.push({
-                    url: url,
-                    name: title,
-                    author: author.name,
-                    authorUrl: author.channel_url,
-                    length: time,
-                    img: info.videoDetails.thumbnails[1].url,
-                    requester: member.user.tag,
-                    requesterIcon: member.user.avatarURL(),
-                });
 
                 // This should not be needed but somehow it is
                 defaultQueue.queue = [];
