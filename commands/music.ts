@@ -1,9 +1,9 @@
-import { VoiceConnectionStatus, entersState, joinVoiceChannel, VoiceConnection, getVoiceConnection, createAudioPlayer, AudioPlayer, AudioPlayerStatus, createAudioResource, StreamType} from '@discordjs/voice';
-import { ChatInputCommandInteraction, EmbedBuilder, Guild, GuildMember, Message, PermissionFlagsBits, SlashCommandBuilder, TextBasedChannel } from "discord.js";
+import { VoiceConnectionStatus, entersState, joinVoiceChannel, VoiceConnection, getVoiceConnection, createAudioPlayer, AudioPlayer, AudioPlayerStatus, createAudioResource, NoSubscriberBehavior, VoiceConnectionState} from '@discordjs/voice';
+import { ChatInputCommandInteraction, EmbedBuilder, GuildMember, Message, PermissionFlagsBits, SlashCommandBuilder, TextBasedChannel } from "discord.js";
 import ytdl from "ytdl-core";
-import ytdld from "ytdl-core-discord"
 import yts from "yt-search"
 import ytpl from 'ytpl';
+import { stream } from 'play-dl';
 
 const queueList = new Map<string, queue>;
 
@@ -62,6 +62,7 @@ export = {
         let serverQueue: queue = queueList.get(guild.id) ?? Object.assign({}, defaultQueue);
 
         let connection: VoiceConnection | undefined = getVoiceConnection(guild.id);
+
         let audioPlayer: AudioPlayer | undefined;
         let message : Message;
 
@@ -293,6 +294,20 @@ export = {
                     return;
                 }
             })
+
+            const networkStateChangeHandler = (oldNetworkState: VoiceConnectionState, newNetworkState: VoiceConnectionState) => {
+                const newUdp = Reflect.get(newNetworkState, 'udp');
+                clearInterval(newUdp?.keepAliveInterval);
+            }
+            
+            connection.on('stateChange', (oldState, newState) => {
+                console.log("test");
+                const oldNetworking = Reflect.get(oldState, 'networking');
+                const newNetworking = Reflect.get(newState, 'networking');
+                
+                oldNetworking?.off('stateChange', networkStateChangeHandler);
+                newNetworking?.on('stateChange', networkStateChangeHandler);
+            });
         }
 
         async function playMusic()
@@ -311,7 +326,7 @@ export = {
                     {
                         stop();
                     }
-                }, 10000)
+                }, 20000)
                 return;
             }
 
@@ -322,7 +337,7 @@ export = {
 
             if (!audioPlayer)
             {
-                audioPlayer = createAudioPlayer();
+                audioPlayer = createAudioPlayer({ behaviors: {noSubscriber: NoSubscriberBehavior.Play} });
 
                 audioPlayer.on(AudioPlayerStatus.Idle, () => {
                     playMusic();
@@ -331,13 +346,15 @@ export = {
                 audioPlayer.on('error', error => {
                     console.log(error);
                 })
-
                 connection.subscribe(audioPlayer);
             }
 
-            const stream = await ytdld(music.url, {filter: 'audioonly', highWaterMark: 1 << 25});
-            const resource = createAudioResource(stream, {inlineVolume: true, inputType: StreamType.Opus});
+            //const stream = await ytdld(music.url, {filter: 'audioonly', highWaterMark: 1 << 30, liveBuffer: 20000, dlChunkSize: 4096});
+            const audioStream = await stream(music.url, {discordPlayerCompatibility: true});
+            const resource = createAudioResource(audioStream.stream, {inlineVolume: true, inputType: audioStream.type});
             resource.volume?.setVolume(0.25);
+
+            //connection.configureNetworking();
 
             audioPlayer?.play(resource);
 
@@ -367,7 +384,7 @@ export = {
 
             setTimeout(async () => {
                 embedMessage?.delete();
-            }, 5000);
+            }, 10000);
 
             return;
         }
