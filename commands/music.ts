@@ -5,15 +5,16 @@ import yts from "yt-search"
 import ytpl from 'ytpl';
 import { stream } from 'play-dl';
 
-const queueList = new Map<string, queue>;
+const queueList = new Map<string, Queue>;
 
-const defaultQueue: queue =
+const defaultQueue: Queue =
 {
     owner: "",
     ownerName: "",
     vc: "",
     queue: [],
     skipVotes: [],
+    looping: false
 }
 
 const initialEmbed = new EmbedBuilder()
@@ -60,7 +61,7 @@ export = {
         const channel = interaction.channel;
         if (!channel) return await interaction.editReply("Failed to get text channel.");
 
-        let serverQueue: queue = queueList.get(guild.id) ?? Object.assign({}, defaultQueue);
+        let serverQueue: Queue = queueList.get(guild.id) ?? Object.assign({}, defaultQueue);
 
         let connection: VoiceConnection | undefined = getVoiceConnection(guild.id);
 
@@ -221,7 +222,7 @@ export = {
                 audioPlayer?.stop();
                 playMusic();
 
-                return;
+                break;
             }
 
             case "queue":
@@ -240,12 +241,14 @@ export = {
 
                 for (let i = 0; i < listSize; i++)
                 {
-                    const queueItem: queueEntry = serverQueue.queue[i];
+                    const queueItem: QueueEntry = serverQueue.queue[i];
 
                     queueMsg.addFields({name: `#${i+1}: ${queueItem.name} by ${queueItem.author}`, value: `**Requested by:** ${queueItem.requester} **Length:** ${queueItem.length}`});
                 }
 
                 interaction.editReply({embeds: [queueMsg]});
+
+                break;
             }
 
             case "forcedj":
@@ -260,6 +263,24 @@ export = {
 				queueList.set(guild.id, serverQueue);
 
                 interaction.editReply("You are now the DJ of the bot.");
+
+                break;
+            }
+
+            case "loop":
+            {
+                if (!connection) return await interaction.editReply("There is no active music bot in this server!");
+
+                if (serverQueue.owner != member.id)
+                	return await interaction.editReply("You are not the current owner of the bot!");
+
+                serverQueue.looping = !serverQueue.looping;
+
+                interaction.editReply(`The current song is ${serverQueue.looping ? "now" : "no longer"} looping.`);
+
+                updateEmbed(serverQueue.queue[0]);
+
+                break;
             }
         }
 
@@ -324,16 +345,14 @@ export = {
             {
                 setTimeout(() => {
                     if (serverQueue.queue.length < 1)
-                    {
                         stop();
-                    }
                 }, 20000)
                 return;
             }
 
             serverQueue.skipVotes = [];
 
-            const music: queueEntry = serverQueue.queue.shift() as queueEntry;
+            const music: QueueEntry = serverQueue.queue[0];
 
 
             if (!audioPlayer)
@@ -346,7 +365,8 @@ export = {
 
                 audioPlayer.on('error', error => {
                     console.log(error);
-                })
+                });
+
                 connection.subscribe(audioPlayer);
             }
 
@@ -359,6 +379,11 @@ export = {
 
             audioPlayer?.play(resource);
 
+            updateEmbed(music);
+        }
+
+        async function updateEmbed(music: QueueEntry)
+        {
             const redeemIcon = music.requesterIcon != null ? music.requesterIcon : undefined;
 
             playingEmbed.setDescription(`[${music.name}](${music.url}) by [${music.author}](${music.authorUrl}).`)
@@ -393,17 +418,18 @@ export = {
     }
 }
 
-interface queue {
+interface Queue {
     owner: string,
     ownerName: string,
     vc: string,
     text?: TextBasedChannel,
     msg?: Message<boolean>,
-    queue: queueEntry[],
+    queue: QueueEntry[],
     skipVotes: string[],
+    looping: boolean,
 }
 
-interface queueEntry {
+interface QueueEntry {
     url: string,
     name: string,
     author: string,
