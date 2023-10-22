@@ -41,7 +41,8 @@ export = {
         )
         .addSubcommand(subcommand => subcommand.setName("skip").setDescription("Skips the current song playing on the bot."))
         .addSubcommand(subcommand => subcommand.setName("queue").setDescription("Sends a list of the first 5 songs current music queue."))
-        .addSubcommand(subcommand => subcommand.setName("forcedj").setDescription("Force gives yourself control of the active bot.")),
+        .addSubcommand(subcommand => subcommand.setName("forcedj").setDescription("Force gives yourself control of the active bot."))
+        .addSubcommand(subcommand => subcommand.setName("loop").setDescription("Toggle looping the current song in the bot.")),
     async execute(interaction : ChatInputCommandInteraction) 
     {
         await interaction.deferReply({ephemeral: true});
