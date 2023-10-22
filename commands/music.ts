@@ -360,6 +360,7 @@ export = {
                 audioPlayer = createAudioPlayer({ behaviors: {noSubscriber: NoSubscriberBehavior.Play} });
 
                 audioPlayer.on(AudioPlayerStatus.Idle, () => {
+                    if (!serverQueue.looping) serverQueue.queue.shift();
                     playMusic();
                 });
 
