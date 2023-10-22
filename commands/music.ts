@@ -220,6 +220,8 @@ export = {
                     await interaction.editReply("Skipped current song.");
 
                 audioPlayer?.stop();
+
+                if (serverQueue.looping) serverQueue.queue.shift();
                 playMusic();
 
                 break;
